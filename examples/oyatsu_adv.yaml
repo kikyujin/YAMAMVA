@@ -1,0 +1,74 @@
+id: oyatsu_adv
+title: "おやつ事件 / The Snack Incident"
+version: "1.0"
+entry: scene_menu
+
+state:
+  heard_elmar: false
+  hearing_count: 0
+
+characters:
+  elmar: { name: "エルマー", sprite: "elmar.png" }
+  sumire: { name: "スミレ", sprite: "sumire.png" }
+
+scenes:
+  scene_menu:
+    - bg: lobby
+    - text: "誰の話を聞く？"
+    - hearingmenu:
+        style: vertical
+        elements:
+          - { key: elmar, label: "エルマーのラボへ", when: "not heard_elmar" }
+          - { key: accuse, label: "犯人を指名する", when: "hearing_count >= 1" }
+          - { key: leave, label: "帰る" }
+
+    - incase:
+        - when: "$result == 'elmar'"
+          next: scene_hear_elmar
+        - when: "$result == 'accuse'"
+          next: scene_accuse
+        - next: scene_ending
+
+  scene_hear_elmar:
+    - bg: lab
+    - speak:
+        character: elmar
+        text: "にーに！ボクは何も食べてないよ🦊"
+        emotion: joy
+    - do:
+        heard_elmar: true
+        hearing_count: "hearing_count + 1"
+    - jump:
+        - next: scene_menu
+
+  scene_accuse:
+    - bg: lobby
+    - text: "犯人を指名する…"
+    - accusemenu:
+        style: vertical
+        elements:
+          - { key: elmar, label: "エルマー" }
+          - { key: sumire, label: "スミレ" }
+
+    - incase:
+        - when: "$result == 'elmar'"
+          next: scene_accuse_elmar
+        - next: scene_accuse_wrong
+
+  scene_accuse_elmar:
+    - bg: lab
+    - speak:
+        character: elmar
+        text: "うぅ…バレちゃった💥 プリン美味しかったもん…"
+        emotion: sorrow
+    - text: "事件解決！"
+    - end: true
+
+  scene_accuse_wrong:
+    - text: "違うようだ…もう少し調べよう。"
+    - jump:
+        - next: scene_menu
+
+  scene_ending:
+    - text: "今日はもう帰ろう。"
+    - end: true

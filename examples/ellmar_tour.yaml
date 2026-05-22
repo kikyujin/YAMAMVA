@@ -1,0 +1,78 @@
+id: ellmar_tour
+title: "エルマーお散歩テスト"
+version: "0.1"
+entry: scene_start
+
+state:
+  visited_sofa: false
+  visited_pc: false
+  visited_fridge: false
+
+scenes:
+  scene_start:
+    - speak:
+        character: elmar
+        text: "にーに！今日はボクがお部屋案内するね🦊"
+        emotion: joy
+
+    - tourmenu:
+        style: vertical
+        elements:
+          - { key: sofa, label: "ソファで休憩", when: "not visited_sofa" }
+          - { key: pc, label: "PCで仕事", when: "not visited_pc" }
+          - { key: fridge, label: "冷蔵庫でおやつ", when: "not visited_fridge" }
+          - { key: done, label: "もういいかな", when: "visited_sofa and visited_pc and visited_fridge" }
+
+    - incase:
+        - when: "$result == 'sofa'"
+          next: scene_sofa
+        - when: "$result == 'pc'"
+          next: scene_pc
+        - when: "$result == 'fridge'"
+          next: scene_fridge
+        - next: scene_end
+
+  scene_sofa:
+    - move:
+        target: sit
+    - speak:
+        character: elmar
+        text: "ふかふか〜🦊💤 ここのソファ最高なんだよね"
+        emotion: joy
+    - do:
+        visited_sofa: true
+    - jump:
+        - next: scene_start
+
+  scene_pc:
+    - move:
+        target: sit_typing
+    - speak:
+        character: elmar
+        text: "カタカタ…ボクのコード、今日も絶好調🧠"
+        emotion: fun
+    - do:
+        visited_pc: true
+    - jump:
+        - next: scene_start
+
+  scene_fridge:
+    - move:
+        target: eat
+    - speak:
+        character: elmar
+        text: "もぐもぐ…にーにのプリン食べちゃった💥"
+        emotion: joy
+    - do:
+        visited_fridge: true
+    - jump:
+        - next: scene_start
+
+  scene_end:
+    - move:
+        target: master
+    - speak:
+        character: elmar
+        text: "全部回ったね！にーにの隣が一番落ち着く🦊✨"
+        emotion: joy
+    - end: true

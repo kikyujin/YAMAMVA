@@ -152,7 +152,33 @@ YamamvaBridge.yamamva_register(h, "menu",  CMD_MENU,  YAMAMVA_BLOCKING);
 // exec loop in a coroutine — see examples/unity/
 ```
 
-### Integrate (Python ctypes)
+### Integrate (Python — bridge class)
+
+```python
+from yamamva_bridge import YamamvaBridge
+
+CMD_SPEAK = 1
+CMD_MENU  = 2
+
+yamva = YamamvaBridge(yaml_str)                         # load from string
+yamva.register("speak", CMD_SPEAK)                      # PASS
+yamva.register("menu",  CMD_MENU, blocking=True)        # BLOCKING
+
+while True:
+    cmd, info = yamva.exec()
+    if cmd == yamva.END:
+        break
+    if cmd == CMD_SPEAK:
+        print(info["node_json"]["text"])
+    elif cmd == CMD_MENU:
+        yamva.set_result("park")                        # player's choice
+
+yamva.close()
+```
+
+See `python/yamamva_bridge.py` for the full wrapper.
+
+### Integrate (Python — raw ctypes)
 
 ```python
 import ctypes
@@ -163,7 +189,7 @@ h = lib.yamamva_load(yaml_bytes, len(yaml_bytes))
 lib.yamamva_register(h, b"speak", 1, 0)  # PASS
 lib.yamamva_register(h, b"menu",  2, 1)  # BLOCKING
 
-# exec loop — see examples/python/
+# exec loop — see test_yamamva_ffi.py
 ```
 
 ---
@@ -356,6 +382,31 @@ See the `examples/` directory:
 
 - `ellmar_tour.yaml` — Room tour with move/speak/menu (used in ELLMAR-Unity integration test)
 - `oyatsu_adv.yaml` — Mystery ADV with hearing menu, conditional branching, state tracking
+
+## Python Bridge
+
+`python/yamamva_bridge.py` — full ctypes wrapper class.
+
+```python
+from yamamva_bridge import YamamvaBridge
+
+yamva = YamamvaBridge(yaml_str)
+yamva.register("speak", 1)
+yamva.register("menu", 2, blocking=True)
+
+cmd, info = yamva.exec()
+# info = {"node_type": str, "node_json": dict, "elements": [{"key", "label", "extra"}]}
+
+yamva.set_result("choice_key")          # answer BLOCKING node
+val = yamva.get_state("score")          # read state variable
+yamva.set_state("score", 100)           # write state variable
+save_json = yamva.save()                # serialize for save file
+
+# Restore from save
+yamva2 = YamamvaBridge.restore(yaml_str, save_json)
+```
+
+All 10 C API functions are wrapped. Requires `libyamamva.dylib`/`.so` (run `cargo build --release`).
 
 ---
 

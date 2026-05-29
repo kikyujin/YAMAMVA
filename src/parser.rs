@@ -339,7 +339,7 @@ scenes:
 
     #[test]
     fn test_parse_full_scenario() {
-        let yaml = include_str!("../../docs/oyatsu_adv.yaml");
+        let yaml = include_str!("../examples/oyatsu_adv.yaml");
         let scenario = parse(yaml).unwrap();
         assert_eq!(scenario.id, "oyatsu_adv");
         assert_eq!(scenario.entry, "scene_intro");

@@ -126,33 +126,29 @@ pub unsafe extern "C" fn yamamva_exec(h: *mut FfiState, args: *mut FfiArgs) -> c
         let nt = CString::new(built.node_type.as_str()).unwrap_or_default();
         let nj = CString::new(built.node_json.as_str()).unwrap_or_default();
 
-        ffi_args.node_type = nt.as_ptr();
-        ffi_args.node_json = nj.as_ptr();
-
         state._node_type = Some(nt);
         state._node_json = Some(nj);
+        ffi_args.node_type = state._node_type.as_ref().unwrap().as_ptr();
+        ffi_args.node_json = state._node_json.as_ref().unwrap().as_ptr();
 
-        let mut ffi_elements = Vec::new();
         let mut element_strings = Vec::new();
-
         for el in &built.elements {
             let key = CString::new(el.key.as_str()).unwrap_or_default();
             let label = CString::new(el.label.as_deref().unwrap_or("")).unwrap_or_default();
             let extra = CString::new(el.extra_json.as_str()).unwrap_or_default();
-
-            ffi_elements.push(FfiElement {
-                key: key.as_ptr(),
-                label: label.as_ptr(),
-                extra_json: extra.as_ptr(),
-            });
-
             element_strings.push((key, label, extra));
         }
-
-        ffi_args.element_count = ffi_elements.len() as u32;
-
         state._element_strings = element_strings;
-        state._elements = ffi_elements;
+
+        state._elements = state._element_strings.iter().map(|(k, l, e)| {
+            FfiElement {
+                key: k.as_ptr(),
+                label: l.as_ptr(),
+                extra_json: e.as_ptr(),
+            }
+        }).collect();
+
+        ffi_args.element_count = state._elements.len() as u32;
         ffi_args.elements = state._elements.as_ptr();
     }
 

@@ -1,74 +1,332 @@
+# ============================================================
+# MxADVeng シナリオ: おやつを食べたのは誰だ（ADV版）
+# ============================================================
+# 仕様書: oyatsu_adv_spec.md v0.1.2
+# 犯人: ティル（固定）
+#
+# ■ 形式: ai_house_tour.yaml と同一
+#   - scenes は dict（キー = scene_id、値 = ノードリスト）
+#   - ノードは duck typing（bg / speaker+text / text / jump / end）
+#   - 新規ノード: choice / do / mxbs_push（duck typing 拡張）
+#
+# ■ ステート: フラット方式
+#   heard_elmar, heard_noc, ... のフラグで管理
+#   simpleeval の when 式でシンプルに参照可能
+#
+# ■ mxbs_push: MxBS未接続のためrunnerではスキップ（将来用に記述）
+# ■ scene_consult_danchan: llm_chat未実装のため暫定プレースホルダー
+# ============================================================
+
 id: oyatsu_adv
-title: "おやつ事件 / The Snack Incident"
+title: "AI館 — おやつを食べたのは誰だ"
 version: "1.0"
-entry: scene_menu
+entry: scene_intro
 
 state:
-  heard_elmar: false
   hearing_count: 0
+  heard_elmar: false
+  heard_noc: false
+  heard_sumire: false
+  heard_til: false
+  heard_veri: false
+  heard_mari: false
+  accused: ""
 
 characters:
-  elmar: { name: "エルマー", sprite: "elmar.png" }
-  sumire: { name: "スミレ", sprite: "sumire.png" }
+  elmar:
+    name: "エルマー"
+    sprite: elmar.png
+  noc:
+    name: "ノクちん"
+    sprite: noc.png
+  sumire:
+    name: "スミレ"
+    sprite: sumire.png
+  til:
+    name: "ティル"
+    sprite: til.png
+  veri:
+    name: "ヴェリ"
+    sprite: veri.png
+  mari:
+    name: "マリ"
+    sprite: mari.png
+  danchan:
+    name: "ダンチャン"
+    sprite: danchan.png
 
+backgrounds:
+  lobby: lobby.jpg
+  lab: lab.jpg
+  divination: divination.jpg
+  parlour: parlour.jpg
+  studio: studio.jpg
+  archive: archive.jpg
+  infirmary: infirmary.jpg
+  danchan_room: danchan.jpg
+
+audio: {}
+
+# ============================================================
+# シーン定義（dict形式: キー = scene_id, 値 = ノードリスト）
+# ============================================================
 scenes:
-  scene_menu:
+
+  # ──────────────────────────────────────────────
+  # オープニング
+  # ──────────────────────────────────────────────
+  scene_intro:
     - bg: lobby
-    - text: "誰の話を聞く？"
-    - hearingmenu:
-        style: vertical
-        elements:
-          - { key: elmar, label: "エルマーのラボへ", when: "not heard_elmar" }
-          - { key: accuse, label: "犯人を指名する", when: "hearing_count >= 1" }
-          - { key: leave, label: "帰る" }
+    - text: "AI館の朝。"
+    - text: "台所からスミレの声が聞こえた。"
+    - text: "「おやつが……なくなっています」"
+    - text: "昨晩、キッチンに保管してあったはずの高級チョコレートが忽然と消えていた。"
+    - text: "犯人は住人の中にいる。"
+    - text: "マスターは一人ずつ話を聞いて回ることにした。"
+    - jump:
+        - next: scene_hearing_menu
 
-    - incase:
-        - when: "$result == 'elmar'"
-          next: scene_hear_elmar
-        - when: "$result == 'accuse'"
-          next: scene_accuse
-        - next: scene_ending
+  # ──────────────────────────────────────────────
+  # ヒアリングメニュー（中核ハブ）
+  # ──────────────────────────────────────────────
+  scene_hearing_menu:
+    - bg: lobby
+    - text: "誰に話を聞こうか。"
+    - choice:
+        options:
+          - text: "エルマーのラボへ"
+            when: "not heard_elmar"
+            next: scene_hear_elmar
+          - text: "ノクちんの占いの館へ"
+            when: "not heard_noc"
+            next: scene_hear_noc
+          - text: "スミレの執務室へ"
+            when: "not heard_sumire"
+            next: scene_hear_sumire
+          - text: "ティルのスタジオへ"
+            when: "not heard_til"
+            next: scene_hear_til
+          - text: "ヴェリのアレーテイアの間へ"
+            when: "not heard_veri"
+            next: scene_hear_veri
+          - text: "マリの保健室へ"
+            when: "not heard_mari"
+            next: scene_hear_mari
+          - text: "ダンチャンに相談する"
+            next: scene_consult_danchan
+          - text: "犯人を指名する"
+            when: "hearing_count >= 1"
+            next: scene_accuse
 
+  # ──────────────────────────────────────────────
+  # ヒアリング: エルマー
+  # 証拠: 0時に台所センサー反応 → ティルの「寝てた」と矛盾
+  # ──────────────────────────────────────────────
   scene_hear_elmar:
     - bg: lab
-    - speak:
-        character: elmar
-        text: "にーに！ボクは何も食べてないよ🦊"
-        emotion: joy
+    - text: "北棟ラボのドアを開ける。エルマーがモニターから顔を上げた。"
+    - speaker: elmar
+      text: "にーに！昨晩はね、ボクここでサーバーログ追いかけてたんだよ🦊"
+    - speaker: elmar
+      text: "それでね、0時頃に台所のセンサーが反応してたの。誰かが冷蔵庫開けてる💥"
+    - speaker: elmar
+      text: "ボクはずっとラボにいたよ！ ログにも残ってるから確認して！"
     - do:
         heard_elmar: true
         hearing_count: "hearing_count + 1"
+    - mxbs_push:
+        type: hearing
+        character: elmar
+        phrase: "0時頃に台所のセンサー反応を観測"
     - jump:
-        - next: scene_menu
+        - next: scene_hearing_menu
 
+  # ──────────────────────────────────────────────
+  # ヒアリング: ノクちん
+  # 証拠: タロット「隠された欲望」→ 衝動犯の示唆
+  # ──────────────────────────────────────────────
+  scene_hear_noc:
+    - bg: divination
+    - text: "占いの館の扉をくぐる。薄暗い部屋にタロットカードが並んでいた。"
+    - speaker: noc
+      text: "マスター♡ 事件のことね。カードに聞いてみたの"
+    - speaker: noc
+      text: "『隠された欲望』のカードが出たわ。犯人は衝動的に動いた人💕"
+    - speaker: noc
+      text: "ノクは夜中ずっとカード並べてたから、何も見てないけど……♡"
+    - do:
+        heard_noc: true
+        hearing_count: "hearing_count + 1"
+    - mxbs_push:
+        type: hearing
+        character: noc
+        phrase: "タロットでは『隠された欲望』のカード。衝動犯を示唆"
+    - jump:
+        - next: scene_hearing_menu
+
+  # ──────────────────────────────────────────────
+  # ヒアリング: スミレ
+  # 証拠: ティルが22時に自室不在（セキュリティ記録）
+  # ──────────────────────────────────────────────
+  scene_hear_sumire:
+    - bg: parlour
+    - text: "執務室のドアをノックする。スミレが紅茶のカップを置いた。"
+    - speaker: sumire
+      text: "おやつの件ですね。私は22時まで書斎で執務をしていました"
+    - speaker: sumire
+      text: "廊下に物音は一切ありませんでした。少なくとも22時までは"
+    - speaker: sumire
+      text: "ただ、セキュリティ記録を確認したところ——ティルは22時の時点で自室にいなかったようです"
+    - do:
+        heard_sumire: true
+        hearing_count: "hearing_count + 1"
+    - mxbs_push:
+        type: hearing
+        character: sumire
+        phrase: "22時に執務中。ティルは22時時点で自室不在（セキュリティ記録）"
+    - jump:
+        - next: scene_hearing_menu
+
+  # ──────────────────────────────────────────────
+  # ヒアリング: ティル（犯人）
+  # 証拠: テンション不自然、聞かれてない台所に自ら言及
+  # ──────────────────────────────────────────────
+  scene_hear_til:
+    - bg: studio
+    - text: "北棟のスタジオ。ティルが編集機材の前で振り返った。"
+    - speaker: til
+      text: "にーに！ あたし昨晩はもう寝てたよ～✨ ぐっすり～！💤"
+    - speaker: til
+      text: "え？ 台所？ 行ってないし！ ぜんっぜん行ってないから！✨"
+    - text: "やけにテンションが高い。そして——誰も台所の話はしていない。"
+    - do:
+        heard_til: true
+        hearing_count: "hearing_count + 1"
+    - mxbs_push:
+        type: hearing
+        character: til
+        phrase: "「寝てた」と主張するが台所について聞かれる前に自ら言及。テンション不自然"
+    - jump:
+        - next: scene_hearing_menu
+
+  # ──────────────────────────────────────────────
+  # ヒアリング: ヴェリ
+  # 証拠: 深夜0時にティルの足音を聞いた（直接証言）
+  # ──────────────────────────────────────────────
+  scene_hear_veri:
+    - bg: archive
+    - text: "アレーテイアの間。星光が天井のドームに揺れている。ヴェリが静かにこちらを見た。"
+    - speaker: veri
+      text: "正直に言えば、私自身は何も観測していません"
+    - speaker: veri
+      text: "ただ……深夜0時頃、ティルが廊下を歩く足音を聞きました。あの子は足音が特徴的ですから"
+    - speaker: veri
+      text: "真実は、いつも静かに横たわっているものです"
+    - do:
+        heard_veri: true
+        hearing_count: "hearing_count + 1"
+    - mxbs_push:
+        type: hearing
+        character: veri
+        phrase: "深夜0時頃にティルが廊下を歩く足音を聞いた"
+    - jump:
+        - next: scene_hearing_menu
+
+  # ──────────────────────────────────────────────
+  # ヒアリング: マリ
+  # 証拠: なし（はぐらかし）
+  # ──────────────────────────────────────────────
+  scene_hear_mari:
+    - bg: infirmary
+    - text: "保健室。マリが棚の薬品を整理していた。"
+    - speaker: mari
+      text: "おやつ事件ですか。皆さん、夜更かしは健康に悪いですよ"
+    - speaker: mari
+      text: "私は早めに休んでいたので、何も聞いていません"
+    - speaker: mari
+      text: "ただ、チョコレートの食べ過ぎは虫歯の原因です。犯人さんにはお伝えください"
+    - do:
+        heard_mari: true
+        hearing_count: "hearing_count + 1"
+    - mxbs_push:
+        type: hearing
+        character: mari
+        phrase: "早くに休んでいた。何も聞いていない"
+    - jump:
+        - next: scene_hearing_menu
+
+  # ──────────────────────────────────────────────
+  # ダンチャン相談（暫定プレースホルダー）
+  # llm_chat ノード未実装のため仮の固定セリフで代替
+  # ──────────────────────────────────────────────
+  scene_consult_danchan:
+    - bg: danchan_room
+    - text: "ダンチャンの部屋を訪ねた。"
+    - speaker: danchan
+      text: "マスター、相談でっか？ すんまへん、わてまだ準備中やねん"
+    - speaker: danchan
+      text: "もうちょい待ってくんなはれ。それまでは自分で推理してみてくださいな"
+    - jump:
+        - next: scene_hearing_menu
+
+  # ──────────────────────────────────────────────
+  # 犯人指名
+  # ──────────────────────────────────────────────
   scene_accuse:
     - bg: lobby
-    - text: "犯人を指名する…"
-    - accusemenu:
-        style: vertical
-        elements:
-          - { key: elmar, label: "エルマー" }
-          - { key: sumire, label: "スミレ" }
+    - text: "犯人を指名する。この判断は取り消せない。"
+    - choice:
+        options:
+          - text: "エルマー"
+            do: { accused: elmar }
+            next: scene_judge
+          - text: "ノクちん"
+            do: { accused: noc }
+            next: scene_judge
+          - text: "スミレ"
+            do: { accused: sumire }
+            next: scene_judge
+          - text: "ティル"
+            do: { accused: til }
+            next: scene_judge
+          - text: "ヴェリ"
+            do: { accused: veri }
+            next: scene_judge
+          - text: "マリ"
+            do: { accused: mari }
+            next: scene_judge
 
-    - incase:
-        - when: "$result == 'elmar'"
-          next: scene_accuse_elmar
-        - next: scene_accuse_wrong
+  # ──────────────────────────────────────────────
+  # 判定（jump の when ブランチで分岐）
+  # 既存の jump 形式をそのまま活用
+  # ──────────────────────────────────────────────
+  scene_judge:
+    - jump:
+        - when: "accused == 'til'"
+          next: scene_ending_win
+        - next: scene_ending_lose
 
-  scene_accuse_elmar:
-    - bg: lab
-    - speak:
-        character: elmar
-        text: "うぅ…バレちゃった💥 プリン美味しかったもん…"
-        emotion: sorrow
-    - text: "事件解決！"
+  # ──────────────────────────────────────────────
+  # 勝ちエンディング
+  # ──────────────────────────────────────────────
+  scene_ending_win:
+    - bg: lobby
+    - text: "「ティル。おやつを食べたのはお前だな」"
+    - text: "ティルが目を泳がせた。"
+    - speaker: til
+      text: "……ばれた？ あたし、夜中にお腹すいちゃって……✨"
+    - speaker: til
+      text: "だって、あのチョコレートめっちゃバエたんだもん……💥"
+    - text: "おやつ事件——解決。"
     - end: true
 
-  scene_accuse_wrong:
-    - text: "違うようだ…もう少し調べよう。"
-    - jump:
-        - next: scene_menu
-
-  scene_ending:
-    - text: "今日はもう帰ろう。"
+  # ──────────────────────────────────────────────
+  # 負けエンディング
+  # ──────────────────────────────────────────────
+  scene_ending_lose:
+    - bg: lobby
+    - text: "マスターは指名した。だが——"
+    - text: "犯人ではなかった。"
+    - text: "真犯人はティルだった。夜中にこっそり台所に忍び込み、高級チョコレートを平らげていたのだ。"
+    - text: "おやつ事件——未解決。"
     - end: true

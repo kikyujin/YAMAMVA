@@ -48,6 +48,9 @@ lib.yamamva_meta.restype = ctypes.c_void_p
 lib.yamamva_save.argtypes = [ctypes.c_void_p]
 lib.yamamva_save.restype = ctypes.c_void_p
 
+lib.yamamva_restore.argtypes = [ctypes.c_char_p, ctypes.c_uint32, ctypes.c_char_p]
+lib.yamamva_restore.restype = ctypes.c_void_p
+
 lib.yamamva_free.argtypes = [ctypes.c_void_p]
 lib.yamamva_free.restype = None
 
@@ -274,7 +277,7 @@ lib.yamamva_free(h)
 # ─── Test 5: Oyatsu ADV (full scenario) ───
 print("\n=== Test 5: Oyatsu ADV full scenario ===")
 
-yaml_path = os.path.join(os.path.dirname(__file__), "..", "docs", "oyatsu_adv.yaml")
+yaml_path = os.path.join(os.path.dirname(__file__), "examples", "oyatsu_adv.yaml")
 with open(yaml_path, "r") as f:
     yaml_full = f.read().encode("utf-8")
 

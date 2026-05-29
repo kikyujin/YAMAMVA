@@ -27,6 +27,7 @@ YamAMVA is `GetMessage`; your game is `DispatchMessage`.
 - **Engine-agnostic** — Unity (C# P/Invoke), Python (ctypes), C/C++, WASM
 - **Pull-based execution** — your game calls `exec()`, not the other way around
 - **Registration model** — define your own node types; YamAMVA dispatches by command ID
+- **World / Scene scope** — split scenarios across multiple YAML files with `file:scene` jump notation
 - **Built-in flow control** — `jump` / `do` / `when` / `incase` / `end`
 - **Expression evaluator** — `score >= 80 and not accused`, `count + 1`
 - **Conditional elements** — menu items filtered by `when` before reaching your game
@@ -196,7 +197,7 @@ lib.yamamva_register(h, b"menu",  2, 1)  # BLOCKING
 
 ## YAML Syntax
 
-### File Structure
+### Single-file Scenario
 
 ```yaml
 id: my_scenario          # required
@@ -214,6 +215,52 @@ scenes:                  # required
   scene_first:
     - ...nodes...
 ```
+
+### Multi-file World (v1.0)
+
+Split large scenarios across files using `world.yaml` + `scenes/` directory:
+
+```
+my_game/
+├── world.yaml           ← global state, metadata, entry point
+└── scenes/
+    ├── intro.yaml       ← scene_intro
+    ├── hub.yaml         ← scene_hub, scene_shop
+    └── endings.yaml     ← scene_win, scene_lose
+```
+
+```yaml
+# world.yaml
+id: my_game
+title: "My Game"
+entry: intro:scene_intro     # file:scene notation
+scene_path: scenes/
+state:
+  gold: 100
+characters:
+  hero: { name: "Hero" }
+```
+
+```yaml
+# scenes/hub.yaml
+scene_hub:
+  - text: "Where to?"
+  - menu:
+      elements:
+        - { key: shop, label: "Shop" }
+        - { key: end, label: "Leave" }
+  - incase:
+      - when: "$result == 'shop'"
+        next: scene_shop              # same file — no prefix needed
+      - next: endings:scene_win       # cross-file — file:scene required
+scene_shop:
+  - text: "Welcome to the shop."
+  - jump:
+      - next: scene_hub
+```
+
+Load with `yamamva_load_world()` (C API) or `parse_world()` (Rust).
+Single-file scenarios loaded via `yamamva_load()` remain fully compatible.
 
 ### Node Types
 
@@ -275,6 +322,7 @@ Whitelist-only. No arbitrary code execution.
 
 ```c
 YamamvaHandle* yamamva_load(const char* yaml, uint32_t len);
+YamamvaHandle* yamamva_load_world(const char* world_yaml_path);
 void           yamamva_free(YamamvaHandle* h);
 ```
 
@@ -349,7 +397,7 @@ typedef struct {
 #define YAMAMVA_BLOCKING (1)
 ```
 
-**Total: 10 functions, 3 constants, 2 structs.**
+**Total: 11 functions, 3 constants, 2 structs.**
 
 ---
 
@@ -406,7 +454,7 @@ save_json = yamva.save()                # serialize for save file
 yamva2 = YamamvaBridge.restore(yaml_str, save_json)
 ```
 
-All 10 C API functions are wrapped. Requires `libyamamva.dylib`/`.so` (run `cargo build --release`).
+All 11 C API functions are wrapped. Requires `libyamamva.dylib`/`.so` (run `cargo build --release`).
 
 ---
 
@@ -414,7 +462,7 @@ All 10 C API functions are wrapped. Requires `libyamamva.dylib`/`.so` (run `carg
 
 ```bash
 cargo test
-# 21 tests, 0 warnings
+# 36 tests (21 unit + 15 world/scope integration), 0 warnings
 
 # FFI tests (requires Python 3)
 python test_yamamva_ffi.py

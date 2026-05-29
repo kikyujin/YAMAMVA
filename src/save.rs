@@ -15,6 +15,7 @@ pub fn save(engine: &Engine) -> String {
         "node_index": engine.cursor().node_index,
         "state": engine.state().dump(),
         "result": result_val,
+        "current_file": engine.current_file(),
     });
 
     serde_json::to_string(&json).unwrap_or_else(|_| "{}".to_string())
@@ -44,6 +45,11 @@ pub fn restore(scenario: Scenario, registry: Registry, save_json: &str) -> Resul
             state.set_result(Some(r.to_string()));
         }
 
+    let current_file = save.get("current_file")
+        .and_then(|v| v.as_str())
+        .unwrap_or("__root__")
+        .to_string();
+
     Ok(Engine {
         scenario,
         state,
@@ -52,6 +58,7 @@ pub fn restore(scenario: Scenario, registry: Registry, save_json: &str) -> Resul
             scene_id,
             node_index,
         },
+        current_file,
         waiting_result: false,
         warnings: Vec::new(),
     })

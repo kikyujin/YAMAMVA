@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString, c_char, c_int, c_uint};
+use std::path::Path;
 use std::ptr;
 
 use crate::engine::{Engine, ExecArgs};
@@ -298,7 +299,45 @@ pub unsafe extern "C" fn yamamva_restore(
 }
 
 /// # Safety
-/// `h` must be a valid pointer returned by `yamamva_load` or `yamamva_restore`.
+/// `path` must be a valid null-terminated C string pointing to a world.yaml file.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn yamamva_load_world(path: *const c_char) -> *mut FfiState {
+    if path.is_null() {
+        return ptr::null_mut();
+    }
+
+    let path_str = match unsafe { CStr::from_ptr(path) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let world_path = Path::new(path_str);
+
+    match parser::parse_world(world_path) {
+        Ok(scenario) => {
+            let registry = Registry::new();
+            let engine = Engine::new(scenario, registry);
+
+            let state = Box::new(FfiState {
+                engine,
+                exec_args: ExecArgs::new(),
+                _node_type: None,
+                _node_json: None,
+                _elements: Vec::new(),
+                _element_strings: Vec::new(),
+            });
+
+            Box::into_raw(state)
+        }
+        Err(e) => {
+            eprintln!("yamamva_load_world error: {}", e);
+            ptr::null_mut()
+        }
+    }
+}
+
+/// # Safety
+/// `h` must be a valid pointer returned by `yamamva_load`, `yamamva_restore`, or `yamamva_load_world`.
 /// After calling this function, `h` must not be used again.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn yamamva_free(h: *mut FfiState) {

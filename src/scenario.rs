@@ -9,6 +9,10 @@ pub struct Scenario {
     pub initial_state: HashMap<String, serde_json::Value>,
     pub meta: HashMap<String, serde_json::Value>,
     pub scenes: HashMap<String, Vec<Node>>,
+    /// scene_id → file_stem reverse map. v1.0: all scenes map to "__root__".
+    pub scene_file: HashMap<String, String>,
+    /// scene_path from world.yaml. None for v1.0 single-file load.
+    pub scene_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]

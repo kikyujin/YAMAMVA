@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use crate::args::{ArgsBuilder, BuiltArgs};
+use crate::error::YamamvaError;
 use crate::evaluator::{evaluate_when, evaluate_do_value};
+use crate::parser::parse_file_scene_ref;
 use crate::registry::{Registry, YAMAMVA_END};
 use crate::scenario::{Node, Scenario};
 use crate::state::State;
@@ -36,6 +38,7 @@ pub struct Engine {
     pub(crate) state: State,
     pub(crate) registry: Registry,
     pub(crate) cursor: Cursor,
+    pub(crate) current_file: String,
     pub(crate) waiting_result: bool,
     pub(crate) warnings: Vec<String>,
 }
@@ -43,15 +46,23 @@ pub struct Engine {
 impl Engine {
     pub fn new(scenario: Scenario, registry: Registry) -> Self {
         let state = State::from_json_map(&scenario.initial_state);
-        let entry = scenario.entry.clone();
+        let entry_scene = match parse_file_scene_ref(&scenario.entry) {
+            Ok((_, scene)) => scene,
+            Err(_) => scenario.entry.clone(),
+        };
+        let current_file = scenario.scene_file
+            .get(&entry_scene)
+            .cloned()
+            .unwrap_or_else(|| "__root__".to_string());
         Engine {
             scenario,
             state,
             registry,
             cursor: Cursor {
-                scene_id: entry,
+                scene_id: entry_scene,
                 node_index: 0,
             },
+            current_file,
             waiting_result: false,
             warnings: Vec::new(),
         }
@@ -92,8 +103,16 @@ impl Engine {
                         if let Some(target) = self.evaluate_branches(branches) {
                             self.apply_branch_do(&target);
                             if let Some(ref next) = target.next {
-                                self.cursor.scene_id = next.clone();
-                                self.cursor.node_index = 0;
+                                match self.resolve_next(next) {
+                                    Ok(scene_id) => {
+                                        self.cursor.scene_id = scene_id;
+                                        self.cursor.node_index = 0;
+                                    }
+                                    Err(e) => {
+                                        self.warnings.push(e.to_string());
+                                        self.cursor.node_index += 1;
+                                    }
+                                }
                             } else {
                                 self.cursor.node_index += 1;
                             }
@@ -111,8 +130,16 @@ impl Engine {
                         if let Some(target) = self.evaluate_branches(branches) {
                             self.apply_branch_do(&target);
                             if let Some(ref next) = target.next {
-                                self.cursor.scene_id = next.clone();
-                                self.cursor.node_index = 0;
+                                match self.resolve_next(next) {
+                                    Ok(scene_id) => {
+                                        self.cursor.scene_id = scene_id;
+                                        self.cursor.node_index = 0;
+                                    }
+                                    Err(e) => {
+                                        self.warnings.push(e.to_string());
+                                        self.cursor.node_index += 1;
+                                    }
+                                }
                             } else {
                                 self.cursor.node_index += 1;
                             }
@@ -194,6 +221,42 @@ impl Engine {
         }
     }
 
+    fn resolve_next(&mut self, next_ref: &str) -> Result<String, YamamvaError> {
+        let (file_opt, scene_id) = parse_file_scene_ref(next_ref)?;
+
+        match file_opt {
+            Some(file_stem) => {
+                if !self.scenario.scenes.contains_key(&scene_id) {
+                    return Err(YamamvaError::Runtime(format!(
+                        "scene '{}' not found (referenced as '{}:{}')",
+                        scene_id, file_stem, scene_id
+                    )));
+                }
+                self.current_file = file_stem;
+                Ok(scene_id)
+            }
+            None => {
+                if let Some(target_file) = self.scenario.scene_file.get(&scene_id) {
+                    if *target_file == self.current_file {
+                        Ok(scene_id)
+                    } else {
+                        Err(YamamvaError::Runtime(format!(
+                            "scene '{}' exists in file '{}' but current file is '{}'. \
+                             Use '{}:{}' for cross-file reference.",
+                            scene_id, target_file, self.current_file,
+                            target_file, scene_id
+                        )))
+                    }
+                } else {
+                    Err(YamamvaError::Runtime(format!(
+                        "scene '{}' not found in current file '{}'",
+                        scene_id, self.current_file
+                    )))
+                }
+            }
+        }
+    }
+
     pub fn state(&self) -> &State {
         &self.state
     }
@@ -208,6 +271,10 @@ impl Engine {
 
     pub fn cursor(&self) -> &Cursor {
         &self.cursor
+    }
+
+    pub fn current_file(&self) -> &str {
+        &self.current_file
     }
 
     pub fn warnings(&self) -> &[String] {

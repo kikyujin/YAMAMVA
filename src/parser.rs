@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::path::Path;
+use std::fs;
+use crate::error::YamamvaError;
 use crate::scenario::{Scenario, Node, Element, Branch};
 
 #[derive(Debug)]
@@ -41,6 +44,11 @@ pub fn parse(yaml_str: &str) -> Result<Scenario, ParseError> {
 
     let scenes = parse_scenes(&doc)?;
 
+    let mut scene_file = HashMap::new();
+    for key in scenes.keys() {
+        scene_file.insert(key.clone(), "__root__".to_string());
+    }
+
     Ok(Scenario {
         id,
         title,
@@ -49,6 +57,175 @@ pub fn parse(yaml_str: &str) -> Result<Scenario, ParseError> {
         initial_state,
         meta,
         scenes,
+        scene_file,
+        scene_path: None,
+    })
+}
+
+/// Parse "file:scene" reference notation.
+/// - colon present → (Some(file_stem), scene_id)
+/// - no colon → (None, scene_id)
+pub fn parse_file_scene_ref(reference: &str) -> Result<(Option<String>, String), YamamvaError> {
+    if let Some(pos) = reference.find(':') {
+        let file_stem = reference[..pos].to_string();
+        let scene_id = reference[pos + 1..].to_string();
+        if scene_id.is_empty() {
+            return Err(YamamvaError::Parse(
+                format!("empty scene_id in reference '{}'", reference),
+            ));
+        }
+        Ok((Some(file_stem), scene_id))
+    } else {
+        Ok((None, reference.to_string()))
+    }
+}
+
+/// Parse a scene file (scenes/xxx.yaml). Top-level keys are scene IDs.
+fn parse_scene_file(yaml_str: &str) -> Result<HashMap<String, Vec<Node>>, ParseError> {
+    let val: serde_yaml::Value = serde_yaml::from_str(yaml_str)
+        .map_err(|e| ParseError { message: format!("YAML syntax error: {}", e) })?;
+    parse_scenes_block(&val)
+}
+
+/// Parse a scenes block — a mapping of scene_id → node list.
+fn parse_scenes_block(val: &serde_yaml::Value) -> Result<HashMap<String, Vec<Node>>, ParseError> {
+    let scenes_map = val.as_mapping()
+        .ok_or_else(|| ParseError { message: "scenes block must be a mapping".into() })?;
+
+    let mut result = HashMap::new();
+    for (key, v) in scenes_map {
+        let scene_id = key.as_str()
+            .ok_or_else(|| ParseError { message: "scene key must be a string".into() })?
+            .to_string();
+        let nodes_seq = v.as_sequence()
+            .ok_or_else(|| ParseError { message: format!("scene '{}' must be a list of nodes", scene_id) })?;
+
+        let mut nodes = Vec::new();
+        for (idx, node_val) in nodes_seq.iter().enumerate() {
+            let node = parse_node(node_val, &scene_id, idx)?;
+            nodes.push(node);
+        }
+        result.insert(scene_id, nodes);
+    }
+    Ok(result)
+}
+
+type SceneMaps = (HashMap<String, Vec<Node>>, HashMap<String, String>);
+
+fn load_scene_files(scene_dir: &Path) -> Result<SceneMaps, YamamvaError> {
+    let mut scenes = HashMap::new();
+    let mut scene_file = HashMap::new();
+
+    if !scene_dir.exists() {
+        return Ok((scenes, scene_file));
+    }
+
+    let mut entries: Vec<_> = fs::read_dir(scene_dir)
+        .map_err(|e| YamamvaError::Io(e.to_string()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| YamamvaError::Io(e.to_string()))?;
+
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext != "yaml" && ext != "yml" {
+            continue;
+        }
+
+        let file_stem = path.file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| YamamvaError::Parse("invalid filename".into()))?
+            .to_string();
+
+        let content = fs::read_to_string(&path)
+            .map_err(|e| YamamvaError::Io(format!("{}: {}", path.display(), e)))?;
+
+        let file_scenes = parse_scene_file(&content)?;
+
+        for (scene_id, nodes) in file_scenes {
+            if scenes.contains_key(&scene_id) {
+                let existing_file = scene_file.get(&scene_id).unwrap();
+                return Err(YamamvaError::Parse(format!(
+                    "scene '{}' defined in both '{}' and '{}'",
+                    scene_id, existing_file, file_stem
+                )));
+            }
+            scene_file.insert(scene_id.clone(), file_stem.clone());
+            scenes.insert(scene_id, nodes);
+        }
+    }
+
+    Ok((scenes, scene_file))
+}
+
+/// Load a world.yaml and all scene files under scene_path.
+pub fn parse_world(world_path: &Path) -> Result<Scenario, YamamvaError> {
+    let world_str = fs::read_to_string(world_path)
+        .map_err(|e| YamamvaError::Io(e.to_string()))?;
+    let world_val: serde_yaml::Value = serde_yaml::from_str(&world_str)
+        .map_err(|e| YamamvaError::Parse(e.to_string()))?;
+
+    let map = world_val.as_mapping()
+        .ok_or_else(|| YamamvaError::Parse("top-level must be a mapping".into()))?;
+
+    let id = get_string(&world_val, "id")
+        .ok_or_else(|| YamamvaError::Parse("missing required field: id".into()))?;
+    let title = get_string(&world_val, "title").unwrap_or_default();
+    let version = get_string(&world_val, "version");
+    let entry = get_string(&world_val, "entry")
+        .ok_or_else(|| YamamvaError::Parse("missing required field: entry".into()))?;
+    let scene_path_str = get_string(&world_val, "scene_path")
+        .unwrap_or_else(|| "scenes/".to_string());
+
+    let initial_state = parse_state(&world_val)
+        .map_err(YamamvaError::from)?;
+
+    let mut meta = HashMap::new();
+    for key in &["characters", "backgrounds", "bgm", "format", "audio"] {
+        if let Some(val) = map.get(serde_yaml::Value::String(key.to_string())) {
+            meta.insert(key.to_string(), yaml_to_json(val));
+        }
+    }
+
+    let world_dir = world_path.parent()
+        .ok_or_else(|| YamamvaError::Parse("invalid world path".into()))?;
+    let scene_dir = world_dir.join(&scene_path_str);
+
+    let (mut scenes, mut scene_file) = load_scene_files(&scene_dir)?;
+
+    if let Some(world_scenes_val) = world_val.get("scenes") {
+        let world_scenes = parse_scenes_block(world_scenes_val)
+            .map_err(YamamvaError::from)?;
+        for (sid, nodes) in world_scenes {
+            if scenes.contains_key(&sid) {
+                return Err(YamamvaError::Parse(format!(
+                    "scene '{}' in world.yaml conflicts with scene file", sid
+                )));
+            }
+            scene_file.insert(sid.clone(), "__world__".to_string());
+            scenes.insert(sid, nodes);
+        }
+    }
+
+    let (_entry_file, entry_scene) = parse_file_scene_ref(&entry)?;
+    if !scenes.contains_key(&entry_scene) {
+        return Err(YamamvaError::Parse(format!(
+            "entry scene '{}' not found", entry_scene
+        )));
+    }
+
+    Ok(Scenario {
+        id,
+        title,
+        version,
+        entry,
+        initial_state,
+        meta,
+        scenes,
+        scene_file,
+        scene_path: Some(scene_path_str),
     })
 }
 
@@ -77,25 +254,7 @@ fn parse_state(doc: &serde_yaml::Value) -> Result<HashMap<String, serde_json::Va
 fn parse_scenes(doc: &serde_yaml::Value) -> Result<HashMap<String, Vec<Node>>, ParseError> {
     let scenes_val = doc.get("scenes")
         .ok_or_else(|| ParseError { message: "missing required field: scenes".into() })?;
-    let scenes_map = scenes_val.as_mapping()
-        .ok_or_else(|| ParseError { message: "scenes must be a mapping".into() })?;
-
-    let mut result = HashMap::new();
-    for (key, val) in scenes_map {
-        let scene_id = key.as_str()
-            .ok_or_else(|| ParseError { message: "scene key must be a string".into() })?
-            .to_string();
-        let nodes_seq = val.as_sequence()
-            .ok_or_else(|| ParseError { message: format!("scene '{}' must be a list of nodes", scene_id) })?;
-
-        let mut nodes = Vec::new();
-        for (idx, node_val) in nodes_seq.iter().enumerate() {
-            let node = parse_node(node_val, &scene_id, idx)?;
-            nodes.push(node);
-        }
-        result.insert(scene_id, nodes);
-    }
-    Ok(result)
+    parse_scenes_block(scenes_val)
 }
 
 fn parse_node(val: &serde_yaml::Value, scene_id: &str, idx: usize) -> Result<Node, ParseError> {

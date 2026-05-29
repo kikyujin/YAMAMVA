@@ -342,11 +342,10 @@ scenes:
         let yaml = include_str!("../examples/oyatsu_adv.yaml");
         let scenario = parse(yaml).unwrap();
         assert_eq!(scenario.id, "oyatsu_adv");
-        assert_eq!(scenario.entry, "scene_intro");
-        assert!(scenario.scenes.contains_key("scene_intro"));
-        assert!(scenario.scenes.contains_key("scene_hearing_menu"));
+        assert_eq!(scenario.entry, "scene_menu");
+        assert!(scenario.scenes.contains_key("scene_menu"));
         assert!(scenario.scenes.contains_key("scene_hear_elmar"));
-        assert!(scenario.scenes.contains_key("scene_ending_win"));
+        assert!(scenario.scenes.contains_key("scene_accuse"));
     }
 
     #[test]

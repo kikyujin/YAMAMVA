@@ -286,21 +286,16 @@ assert h, "load failed"
 
 lib.yamamva_register(h, b"bg", CMD_BG, YAMAMVA_PASS)
 lib.yamamva_register(h, b"text", CMD_TEXT, YAMAMVA_PASS)
-lib.yamamva_register(h, b"speaker", CMD_SPEAKER, YAMAMVA_PASS)
-lib.yamamva_register(h, b"choice", CMD_MENU, YAMAMVA_BLOCKING)
-lib.yamamva_register(h, b"mxbs_push", CMD_MXBS, YAMAMVA_PASS)
+lib.yamamva_register(h, b"speak", CMD_SPEAKER, YAMAMVA_PASS)
+lib.yamamva_register(h, b"hearingmenu", CMD_MENU, YAMAMVA_BLOCKING)
+lib.yamamva_register(h, b"accusemenu", CMD_MXBS, YAMAMVA_BLOCKING)
 
 args = FfiArgs()
 trace = []
-choices_made = []
 
-# Script: intro → hearing_menu → choose Elmar → back to menu → accuse → choose Til → win
-choice_script = [
-    "scene_hear_elmar",   # First choice: go to Elmar
-    "scene_accuse",       # Second choice: accuse
-    "scene_judge",        # Third choice: Til (accused: til via do)
-]
-choice_idx = 0
+# Script: menu → choose elmar → hear_elmar → menu → choose accuse → accuse → choose elmar → win
+menu_choices = ["elmar", "accuse", "elmar"]
+menu_idx = 0
 
 for step in range(200):
     cmd = lib.yamamva_exec(h, ctypes.byref(args))
@@ -312,44 +307,19 @@ for step in range(200):
     nt = args.node_type.decode("utf-8") if args.node_type else "?"
     trace.append(nt)
 
-    if cmd == CMD_MENU and args.element_count > 0:
-        el_keys = []
-        el_extras = []
-        for i in range(args.element_count):
-            k = args.elements[i].key.decode("utf-8") if args.elements[i].key else ""
-            extra_str = args.elements[i].extra_json.decode("utf-8") if args.elements[i].extra_json else "{}"
-            el_keys.append(k)
-            el_extras.append(json.loads(extra_str))
-
-        # choice nodes have "next" in extra, pick from script
+    if cmd in (CMD_MENU, CMD_MXBS) and args.element_count > 0:
         chosen = None
-        if choice_idx < len(choice_script):
-            target = choice_script[choice_idx]
-            for i, extra in enumerate(el_extras):
-                if extra.get("next") == target:
-                    chosen = el_keys[i] if el_keys[i] else None
-                    # For choice nodes the "text" is the label, key might be empty
-                    # Need to set result to match what incase/choice expects
-                    break
-
-        if chosen is None and el_keys:
-            chosen = el_keys[0]
-
-        if chosen:
-            choices_made.append(chosen)
-            # For choice nodes, the result might need to be the text or key
-            # Actually for choice nodes in MxADVeng, there's no incase - the next is in the option itself
-            # The engine handles choice by... let's check what the parser does
-            result_bytes = chosen.encode("utf-8")
-            result_buf = ctypes.c_char_p(result_bytes)
-            args.result = result_buf
-
-        choice_idx += 1
+        if menu_idx < len(menu_choices):
+            chosen = menu_choices[menu_idx]
+        else:
+            chosen = args.elements[0].key.decode("utf-8") if args.elements[0].key else ""
+        result_buf = ctypes.c_char_p(chosen.encode("utf-8"))
+        args.result = result_buf
+        menu_idx += 1
 
 node_types = [t for t in trace if t != "END"]
 print(f"  Total nodes dispatched: {len(node_types)}")
 print(f"  Node types: {set(node_types)}")
-print(f"  Choices made: {choices_made}")
 print(f"  Ended: {'END' in trace}")
 
 assert "END" in trace, "Scenario did not reach END"
@@ -358,10 +328,7 @@ assert "END" in trace, "Scenario did not reach END"
 ptr = lib.yamamva_get_state(h, b"heard_elmar")
 val = read_and_free(ptr)
 print(f"  heard_elmar = {val}")
-
-ptr = lib.yamamva_get_state(h, b"accused")
-val = read_and_free(ptr)
-print(f"  accused = {val}")
+assert val == "true", f"expected heard_elmar=true, got {val}"
 
 lib.yamamva_free(h)
 
